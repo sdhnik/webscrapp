@@ -1,9 +1,35 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
 import re
 
 app = Flask(__name__)
+CORS(app)
+
+def extract_author_name(text):
+    ignore_words = {"about", "above", "across", "after", "against", "along", "amid", "among", "around", "at", "before", "behind", "below", "beneath", "beside", "between", "beyond", "but", "by", "concerning", "despite", "down", "during", "except", "for", "from", "in", "inside",  "into", "like", "near", "of", "off", "on", "onto", "out", "outside", "over", "past",  "regarding", "since", "through", "throughout", "to", "toward", "under", "underneath", "until", "up", "upon", "with", "within", "without"}
+    words = text.split()
+    filtered_words = [word for word in words if word.lower() not in ignore_words]
+    author = re.findall(r'\b[A-Z][a-z]*\s[A-Z][a-z]*\b', ' '.join(filtered_words))
+    return author
+
+def find_author(soup):
+    author_meta = soup.find('meta', attrs={'name': 'author'})
+    if author_meta:
+        author_content = re.sub('<[^<]+?>', '', author_meta['content'])
+        author = extract_author_name(author_content)
+        if author:
+            return author
+
+    author_div = soup.find(lambda tag: tag.name == "div" and "author" in tag.get('class', []))
+    if author_div:
+        author_without_tags = re.sub('<[^<]+?>', '', author_div.get_text(strip=True))
+        author = extract_author_name(author_without_tags)
+        if author:
+            return author
+
+    return 'No author found'
 
 @app.route('/', methods=['POST'])
 def scrape_webpage():
@@ -25,10 +51,7 @@ def scrape_webpage():
         # Extract details
         title = soup.find('title').get_text() if soup.find('title') else 'No title found'
 
-        author = soup.find('meta', attrs={'name': 'author'})['content'] if soup.find('meta', attrs={'name': 'author'}) else None
-        if not author:
-            author_div = soup.find(lambda tag: tag.name == "div" and "author" in tag.get('class', []))
-            author = author_div.get_text(strip=True) if author_div else 'No author found'
+        author = find_author(soup)
 
         date_created = soup.find('meta', attrs={'property': 'article:published_time'})['content'] if soup.find('meta', attrs={'property': 'article:published_time'}) else None
         if not date_created:
